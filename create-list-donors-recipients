@@ -1,59 +1,66 @@
-;; Creates a list of approved Receiving Institutions
-(define-non-fungible-token institution-nft uint)
+(define-type-alias InstitutionName (String 30 ascii))
 
+(define-type-alias Id Uint)
 
-(define-map donor-list
-            (  (id uint))  
- (   (institution-name (buff 30))
-     (institution-name-id (buff 30))))
+(define-non-fungible-token institution-nft Id)
 
-(define-map lookup (   
-                    (institution-name (buff 30)))
-                     
- (  (id uint)))
+(define-map donor-list  
+ ((id Id))  
+ ((institution-name InstitutionName)   
+  (institution-principal Principal)))
+  
+(define-map lookup 
+ ((institution-name InstitutionName)) 
+ ((id Id)))
 
+(define-data-var last-id Id u0)
 
-(define-map lookup (   
-                    (institution-name (buff 30)))
-                     
-        (  (id uint)))
+(define-public (alive) 
+  (ok "Ready to receive donations"))
 
-(define-data-var last-id uint u0)
-
-(define-public (alive) (ok "Ready to receive donations"))
-
-(define-read-only (get-last-id) (var-get last-id))
-
+(define-read-only (get-last-id) 
+  (var-get last-id))
 
 (define-public (register 
-                 (institution-name (buff 30)) 
-                 (institution-name-id (buff 30)))
-                   
-  (let ((id (+ (get-last-id) u1)))
-     (begin (var-set last-id id)             
-      (map-insert donor-list 
-        {id: id} 
-        {institution-name: institution-name, institution-name-id: institution-name-id
-         (map-insert lookup {institution-name: institution-name} {id: id})
-         (unwrap! (nft-mint? institution-nft id tx-sender) (err 1))
-         (ok id)}))))
+                 (institution-name InstitutionName)
+                 (institution-principal Principal))  
+  (let ((id (+ (get-last-id) u1)))     
+    (var-set last-id id) 
+    (map-insert donor-list {id} 
+      {institution-name, institution-principal})       
+    (map-insert lookup {institution-name} {id})      
+    (unwrap! (nft-mint? institution-nft id tx-sender) (err 1))                 
+    (ok id)))
 
-(define-private (get-id-by-name? (institution-name (buff 30)))  
-  (get id (map-get? lookup {institution-name: institution-name})))
-(define-read-only (get-data-by-name? (institution-name (buff 30)))   
-  (map-get? donor-list {id: (unwrap! (get-id-by-name? institution-name) none)}))
-(define-read-only (get-owner? (institution-name-id (buff 30))) 
- (nft-get-owner? institution-nft (unwrap! (get-id-by-name? institution-name-id) none)))
+(define-private (get-id-by-name? 
+                 (institution-name InstitutionName))  
+ (get id (map-get? lookup {institution-name})))   
 
-(define-public (update (institution-name (buff 30))(institution-name-id (buff 30)))  
+(define-read-only (get-data-by-name? (institution-name InstitutionName))  
+  (map-get? donor-list 
+   {id (unwrap! (get-id-by-name? institution-name) none)}))
+
+(define-read-only (get-owner? 
+                   (institution-name InstitutionName)) 
+ (nft-get-owner? institution-nft 
+  (unwrap! (get-id-by-name? institution-name) none)))
+
+(define-public (update  
+                (institution-name InstitutionName) 
+                (institution-principal Principal))  
   (if (is-eq tx-sender (unwrap-panic (get-owner? institution-name))) 
-      (ok (map-set donor-list {id: (unwrap! (get-id-by-name? institution-name))}))
-      (err u1 {institution-name: institution-name, institution-name-id: institution-name-id})    
-      (err u2)))
+    (ok (map-set donor-list 
+          {id (unwrap! (get-id-by-name? institution-name) (err u1))} 
+          {institution-name, institution-principal}))    
+    (err u2)))
 
-;; lets an institution to change the account name
-(define-public (transfer (institution-name (string-ascii 30)) (recipient principal)) 
- (if (is-eq tx-sender (unwrap-panic (get-owner? institution-name)))   
-  (nft-transfer? institution-nft (unwrap! (get-id-by-name? institution-name) 
-                                   (err u1)) tx-sender recipient)    
+(define-public (transfer 
+                (institution-name InstitutionName) 
+                (recipient Principal)) 
+ (if (is-eq tx-sender (unwrap-panic (get-owner? institution-name)))
+   (nft-transfer? institution-nft (unwrap! (get-id-by-name? institution-name) (err u1)) 
+     tx-sender recipient)    
   (err u2)))
+
+
+;;
